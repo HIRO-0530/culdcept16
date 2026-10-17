@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Culdcept Map Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #1a202c; color: #e2e8f0; }
+        canvas { background-color: #2d3748; border-radius: 0.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .log-container::-webkit-scrollbar { width: 8px; }
+        .log-container::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 4px; }
+        #diceOverlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 6rem; font-weight: bold; color: white; text-shadow: 0 0 20px rgba(0,0,0,0.8);
+            pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 50;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-4 px-2">
+
+    <div id="setupScreen" class="bg-gray-800 p-8 rounded-lg shadow-xl max-w-2xl w-full">
+        <h1 class="text-3xl font-bold text-center mb-6 text-yellow-400">設定</h1>
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div>
+                <label class="block text-sm mb-1 text-gray-300">メイン属性</label>
+                <select id="setupElement" class="w-full bg-gray-700 p-2 rounded text-white border border-gray-600">
+                    <option value="火">火 (Fire)</option>
+                    <option value="水">水 (Water)</option>
+                    <option value="地">地 (Earth)</option>
+                    <option value="風">風 (Air)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm mb-1 text-gray-300">クリーチャー枚数</label>
+                <input type="number" id="setupCreatures" value="15" class="w-full bg-gray-700 p-2 rounded text-white border border-gray-600" onchange="updateDeckCount()">
+            </div>
+            <div>
+                <label class="block text-sm mb-1 text-gray-300">クリーチャー平均コスト</label>
+                <input type="number" id="setupCreatureCost" value="70" class="w-full bg-gray-700 p-2 rounded text-white border border-gray-600">
+            </div>
+            <div>
+                <label class="block text-sm mb-1 text-gray-300">アイテム枚数</label>
+                <input type="number" id="setupItems" value="5" class="w-full bg-gray-700 p-2 rounded text-white border border-gray-600" onchange="updateDeckCount()">
+            </div>
+            <div>
+                <label class="block text-sm mb-1 text-gray-300">アイテム平均コスト</label>
+                <input type="number" id="setupItemCost" value="60" class="w-full bg-gray-700 p-2 rounded text-white border border-gray-600">
+            </div>
+            <div>
+                <label class="block text-sm mb-1 text-gray-300">パーミッション枚数</label>
+                <input type="number" id="setupPerm" value="1" min="0" max="4" class="w-full bg-gray-700 p-2 rounded text-white border border-gray-600" onchange="updateDeckCount()">
+            </div>
+            <div>
+                <label class="block text-sm mb-1 text-gray-300">ホーリーワード8枚数</label>
+                <input type="number" id="setupHW8" value="1" min="0" max="4" class="w-full bg-gray-700 p-2 rounded text-white border border-gray-600" onchange="updateDeckCount()">
+            </div>
+            <div class="col-span-2">
+                <label class="block text-sm mb-1 text-gray-300">スペル内訳 (自動計算)</label>
+                <div class="w-full bg-gray-600 p-2 rounded text-gray-300" id="setupSpells">20 (ギフト4/パ1/ホ1/通常14)</div>
+            </div>
+        </div>
+
+        <div class="bg-gray-700 p-4 rounded mb-6 border border-gray-600">
+            <h2 class="text-lg font-bold text-yellow-400 mb-3">護符・自動モード設定 (プレイヤー用AI設定)</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm mb-1 text-gray-300">自動モード</label>
+                    <label class="flex items-center gap-2 text-white">
+                        <input type="checkbox" id="setupAutoMode" class="w-5 h-5 rounded" checked>
+                        <span>自動プレイで見守る</span>
+                    </label>
+                </div>
+                <div>
+                    <label class="block text-sm mb-1 text-gray-300">購入護符の対象</label>
+                    <select id="setupAmuletBuy" class="w-full bg-gray-800 p-2 rounded text-white border border-gray-600">
+                        <option value="main">自分のメイン属性</option>
+                        <option value="majority">一番多い属性</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm mb-1 text-gray-300">売却タイミング</label>
+                    <div class="flex gap-2">
+                        <input type="number" id="setupAmuletSellLap" value="3" class="w-1/2 bg-gray-800 p-2 rounded text-white border border-gray-600" placeholder="周回数">周目
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm mb-1 text-gray-300">売却量</label>
+                    <select id="setupAmuletSellAmount" class="w-full bg-gray-800 p-2 rounded text-white border border-gray-600">
+                        <option value="all">全部売却</option>
+                        <option value="650">約650G分売却</option>
+                        <option value="1250">約1250G分売却</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <button onclick="startGame()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold py-3 rounded shadow-lg transition">ゲームスタート</button>
+    </div>
+
+    <div id="gameScreen" class="hidden w-full max-w-[1200px] flex flex-col lg:flex-row gap-4 h-[calc(100vh-2rem)]">
+        <div class="flex flex-col items-center lg:w-2/3 h-full relative">
+            <div class="relative">
+                <canvas id="mapCanvas" width="600" height="600"></canvas>
+                <div id="diceOverlay">🎲</div>
+                <div id="directionOverlay" class="absolute inset-0 flex items-center justify-center bg-black/50 hidden z-40 rounded-lg">
+                    <div id="directionButtons" class="flex gap-4"></div>
+                </div>
+                
+                <!-- Church Overlay -->
+                <div id="churchOverlay" class="absolute inset-0 flex items-center justify-center bg-black/80 hidden z-50 rounded-lg">
+                    <div class="bg-gray-800 p-6 rounded-lg border border-yellow-500 text-center w-80">
+                        <h3 class="text-xl font-bold text-yellow-400 mb-4">聖堂 (護符売買)</h3>
+                        <div id="churchContent" class="mb-4 text-sm text-left"></div>
+                        <div class="flex justify-center gap-2 mt-4">
+                            <button onclick="closeChurch()" class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded">完了</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4 w-full flex gap-3 max-w-[600px]">
+                <button id="btnUseCard" class="flex-1 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-4 rounded shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    🃏 スペルを使用
+                </button>
+                <button id="btnRoll" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    🎲 ダイスを振る
+                </button>
+            </div>
+            <div class="bg-gray-700 p-3 mt-3 rounded text-sm text-gray-100 w-full max-w-[600px]" id="handInfo">
+                手札: 0枚
+            </div>
+        </div>
+
+        <div class="flex flex-col gap-4 lg:w-1/3 h-full">
+            <div id="statsContainer" class="bg-gray-800 p-4 rounded-lg shadow-lg flex flex-col gap-2 overflow-y-auto max-h-[300px]"></div>
+            <div id="logContainer" class="bg-gray-900 p-4 rounded-lg flex-1 overflow-y-auto font-mono text-sm log-container border border-gray-700"></div>
+        </div>
+    </div>
+
+    <!-- Dialog Overlay -->
+    <div id="dialogOverlay" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-[100]">
+        <div class="bg-gray-800 p-6 rounded-lg max-w-sm w-full text-center border border-gray-600">
+            <p id="dialogMessage" class="mb-6 text-lg"></p>
+            <div id="dialogButtons" class="flex flex-wrap justify-center gap-3"></div>
+        </div>
+    </div>
+
+    <!-- Victory Overlay -->
+    <div id="victoryOverlay" class="fixed inset-0 bg-black/90 flex flex-col items-center justify-center hidden z-[200] p-4">
+        <h2 id="victoryMessage" class="text-4xl font-bold text-yellow-400 mb-2"></h2>
+        <p id="victorySubMessage" class="text-lg text-gray-300 mb-6"></p>
+        <div id="graphContainer" class="w-full max-w-4xl h-96 bg-gray-800 rounded-lg p-4 mb-6 border border-gray-600"></div>
+        <button onclick="location.reload()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded shadow-lg transition">もう一度プレイ</button>
+    </div>
+
+<script>
+    const TILE_SIZE = 60;
+    const TARGET_G = 8000;
+    const LAND_COST = 70;
+    const TOLL_RATES = { 1: 0.2, 2: 0.3, 3: 0.4, 4: 0.5, 5: 0.6 };
+    const CHAIN_MULT = { 1: 1, 2: 1.5, 3: 2, 4: 2.5, 5: 3 };
+    const LAND_VALUES = { 1: 100, 2: 200, 3: 400, 4: 800, 5: 1600 };
+    const UPGRADE_COSTS = { 1: 50, 2: 200, 3: 400, 4: 600 }; // 1->2:50, 2->3:200, 3->4:400, 4->5:600
+    
+    // 赤=火、青=水、緑=地、黄=風、紫=複属性
+    const COLORS = {
+        '火': '#ef4444', '水': '#0ea5e9', '地': '#84cc16', '風': '#fde047', '複': '#d946ef',
+        '砦': '#ffffff', '城': '#ffffff', '占い': '#ffffff', '聖堂': '#ffffff'
+    };
+    const ELEMENTS = ['火', '水', '地', '風'];
+    const PLAYER_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308'];
+
+    let players = [];
+    let currentTurn = 0;
+    let mapNodes = [];
+    let mapEdges = [];
+    let isAutoMode = false;
+    let churchResolve = null; 
+    let globalRound = 1;
+    let gameEnded = false;
+
+    const ctx = document.getElementById('mapCanvas').getContext('2d');
+    const logEl = document.getElementById('logContainer');
+    const statsContainer = document.getElementById('statsContainer');
+    const handInfo = document.getElementById('handInfo');
+    const btnRoll = document.getElementById('btnRoll');
+    const btnUseCard = document.getElementById('btnUseCard');
+    const diceOverlay = document.getElementById('diceOverlay');
+
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    
+    function log(message, color = 'text-gray-300') {
+        const div = document.createElement('div');
+        div.className = `mb-1 ${color}`;
+        div.textContent = message;
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function updateDeckCount() {
+        let c = parseInt(document.getElementById('setupCreatures').value) || 0;
+        let i = parseInt(document.getElementById('setupItems').value) || 0;
+        let p = parseInt(document.getElementById('setupPerm').value) || 0;
+        let h = parseInt(document.getElementById('setupHW8').value) || 0;
+        if(p > 4) { p = 4; document.getElementById('setupPerm').value = 4; }
+        if(h > 4) { h = 4; document.getElementById('setupHW8').value = 4; }
+        
+        if(c + i > 36) { document.getElementById('setupItems').value = 36 - c; i = 36 - c; }
+        
+        let totalSpells = 40 - c - i;
+        let normal = Math.max(0, totalSpells - 4 - p - h);
+        document.getElementById('setupSpells').textContent = `${totalSpells} (ギフト4/パ${p}/ホ${h}/通常${normal})`;
+    }
+
+    function generateDeck(isPlayer = false, element = '無') {
+        let deck = [];
+        let cCount = isPlayer ? parseInt(document.getElementById('setupCreatures').value) : 15;
+        let iCount = isPlayer ? parseInt(document.getElementById('setupItems').value) : 5;
+        let pCount = isPlayer ? parseInt(document.getElementById('setupPerm').value) : Math.floor(Math.random()*2);
+        let hCount = isPlayer ? parseInt(document.getElementById('setupHW8').value) : Math.floor(Math.random()*2);
+        let sCount = 40 - cCount - iCount;
+        let cCost = isPlayer ? parseInt(document.getElementById('setupCreatureCost').value) : 70;
+        let iCost = isPlayer ? parseInt(document.getElementById('setupItemCost').value) : 60;
+
+        for (let i = 0; i < cCount; i++) deck.push({ type: 'creature', name: 'クリーチャー', cost: cCost, abbr: 'ク', element: element });
+        for (let i = 0; i < iCount; i++) deck.push({ type: 'item', name: 'アイテム', cost: iCost, abbr: 'ア' });
+        for (let i = 0; i < 4; i++) deck.push({ type: 'spell', name: 'ギフト', id: 'gift', cost: 80, abbr: 'ギ' });
+        for (let i = 0; i < pCount; i++) deck.push({ type: 'spell', name: 'パーミッション', id: 'perm', cost: 100, abbr: 'パ' });
+        for (let i = 0; i < hCount; i++) deck.push({ type: 'spell', name: 'ホーリーワード8', id: 'hw8', cost: 80, abbr: 'ホ' });
+        
+        let normalCount = Math.max(0, sCount - 4 - pCount - hCount);
+        for (let i = 0; i < normalCount; i++) deck.push({ type: 'spell', name: '通常スペル', id: 'normal', cost: 30, abbr: 'ス' });
+        
+        return deck.sort(() => Math.random() - 0.5);
+    }
+
+    function initMap() {
+        const rawMap = [
+            { id: 0, x: 0, y: 0, type: 'fort', name: '太陽', element: '砦' },
+            { id: 1, x: 1, y: 0, type: 'land', element: '風' },
+            { id: 2, x: 2, y: 0, type: 'land', element: '風' },
+            { id: 3, x: 3, y: 0, type: 'land', element: '複' },
+            { id: 4, x: 4, y: 0, type: 'land', element: '地' },
+            { id: 5, x: 5, y: 0, type: 'fort', name: '聖堂', element: '聖堂' },
+            { id: 6, x: 0, y: 1, type: 'land', element: '水' },
+            { id: 7, x: 3, y: 1, type: 'land', element: '火' },
+            { id: 8, x: 5, y: 1, type: 'land', element: '地' },
+            { id: 9, x: 0, y: 2, type: 'land', element: '水' },
+            { id: 10, x: 3, y: 2, type: 'land', element: '火' },
+            { id: 11, x: 5, y: 2, type: 'land', element: '複' },
+            { id: 12, x: 6, y: 2, type: 'land', element: '地' },
+            { id: 13, x: 7, y: 2, type: 'land', element: '地' },
+            { id: 14, x: 8, y: 2, type: 'land', element: '水' },
+            { id: 15, x: 0, y: 3, type: 'land', element: '複' },
+            { id: 16, x: 1, y: 3, type: 'land', element: '地' },
+            { id: 17, x: 2, y: 3, type: 'land', element: '地' },
+            { id: 18, x: 3, y: 3, type: 'fort', name: '太陽', element: '砦' },
+            { id: 19, x: 5, y: 3, type: 'land', element: '水' },
+            { id: 20, x: 8, y: 3, type: 'land', element: '水' },
+            { id: 21, x: 0, y: 4, type: 'land', element: '風' },
+            { id: 22, x: 5, y: 4, type: 'land', element: '水' },
+            { id: 23, x: 8, y: 4, type: 'fort', name: '月', element: '砦' },
+            { id: 24, x: 0, y: 5, type: 'fort', name: '占い', element: '占い' },
+            { id: 25, x: 1, y: 5, type: 'land', element: '風' },
+            { id: 26, x: 2, y: 5, type: 'land', element: '複' },
+            { id: 27, x: 3, y: 5, type: 'land', element: '火' },
+            { id: 28, x: 4, y: 5, type: 'land', element: '火' },
+            { id: 29, x: 5, y: 5, type: 'castle', name: '城', element: '城' },
+            { id: 30, x: 2, y: 6, type: 'land', element: '風' },
+            { id: 31, x: 2, y: 7, type: 'land', element: '風' },
+            { id: 32, x: 2, y: 8, type: 'land', element: '火' },
+            { id: 33, x: 3, y: 8, type: 'land', element: '火' },
+            { id: 34, x: 4, y: 8, type: 'fort', name: '月', element: '砦' }
+        ];
+
+        const connections = [
+            [0,1],[1,2],[2,3],[3,4],[4,5], [0,6],[6,9],[9,15], [3,7],[7,10],[10,18],
+            [5,8],[8,11], [15,16],[16,17],[17,18], [11,12],[12,13],[13,14],
+            [11,19],[19,22],[22,29], [14,20],[20,23], [15,21],[21,24],
+            [24,25],[25,26],[26,27],[27,28],[28,29], [26,30],[30,31],[31,32],[32,33],[33,34]
+        ];
+
+        mapNodes = rawMap;
+        mapEdges = {};
+        mapNodes.forEach(n => mapEdges[n.id] = []);
+        connections.forEach(edge => {
+            mapEdges[edge[0]].push(edge[1]);
+            mapEdges[edge[1]].push(edge[0]);
+        });
+    }
+
+    function startGame() {
+        isAutoMode = document.getElementById('setupAutoMode').checked;
+        document.getElementById('setupScreen').classList.add('hidden');
+        document.getElementById('gameScreen').classList.remove('hidden');
+        
+        initMap();
+        globalRound = 1;
+        gameEnded = false;
+        
+        const pElement = document.getElementById('setupElement').value;
+        const cpuEls = [ELEMENTS[Math.floor(Math.random()*4)], ELEMENTS[Math.floor(Math.random()*4)], ELEMENTS[Math.floor(Math.random()*4)]];
+        
+        const amuletSet = {
+            buy: document.getElementById('setupAmuletBuy').value,
+            sellLap: parseInt(document.getElementById('setupAmuletSellLap').value) || 3,
+            sellAmt: document.getElementById('setupAmuletSellAmount').value
+        };
+
+        players = [
+            { id: 0, name: 'あなた', isCPU: isAutoMode, color: PLAYER_COLORS[0], element: pElement, g: 200, laps: 0, hasSun: false, hasMoon: false, node: 29, lastNode: null, deck: generateDeck(true, pElement), hand: [], actionDone: false, hw: null, maxChain: 0, amulets: {'火':0,'水':0,'地':0,'風':0}, aiSet: amuletSet, history: [], currentTurnFlags: [] },
+            { id: 1, name: 'CPU 1', isCPU: true, color: PLAYER_COLORS[1], element: cpuEls[0], g: 200, laps: 0, hasSun: false, hasMoon: false, node: 29, lastNode: null, deck: generateDeck(false, cpuEls[0]), hand: [], actionDone: false, hw: null, maxChain: 0, amulets: {'火':0,'水':0,'地':0,'風':0}, aiSet: {buy:'main', sellLap:3, sellAmt:'650'}, history: [], currentTurnFlags: [] },
+            { id: 2, name: 'CPU 2', isCPU: true, color: PLAYER_COLORS[2], element: cpuEls[1], g: 200, laps: 0, hasSun: false, hasMoon: false, node: 29, lastNode: null, deck: generateDeck(false, cpuEls[1]), hand: [], actionDone: false, hw: null, maxChain: 0, amulets: {'火':0,'水':0,'地':0,'風':0}, aiSet: {buy:'main', sellLap:3, sellAmt:'650'}, history: [], currentTurnFlags: [] },
+            { id: 3, name: 'CPU 3', isCPU: true, color: PLAYER_COLORS[3], element: cpuEls[2], g: 200, laps: 0, hasSun: false, hasMoon: false, node: 29, lastNode: null, deck: generateDeck(false, cpuEls[2]), hand: [], actionDone: false, hw: null, maxChain: 0, amulets: {'火':0,'水':0,'地':0,'風':0}, aiSet: {buy:'main', sellLap:3, sellAmt:'650'}, history: [], currentTurnFlags: [] },
+        ];
+
+        players.forEach(p => { for(let i=0; i<5; i++) if(p.deck.length) p.hand.push(p.deck.pop()); });
+
+        drawMap();
+        log('ゲームスタート！城から開始します。', 'text-yellow-400 font-bold text-lg');
+        startTurn();
+    }
+
+    function getChainMultiplier(ownerId, element) {
+        let count = mapNodes.filter(n => n.owner === ownerId && n.element === element).length;
+        if(count === 0) return 0;
+        if(count >= 5) count = 5;
+        return CHAIN_MULT[count];
+    }
+
+    function getLandValue(node) {
+        if(!node.level) return 0;
+        let base = LAND_VALUES[node.level];
+        let mult = getChainMultiplier(node.owner, node.element);
+        return base * mult;
+    }
+
+    function getAmuletValue(element) {
+        let totalVal = 0;
+        mapNodes.forEach(n => {
+            if(n.element === element && n.owner !== undefined) totalVal += getLandValue(n);
+        });
+        return 10 + Math.floor(totalVal / 100);
+    }
+
+    function getTotalG(player) {
+        let landValue = 0;
+        mapNodes.forEach(n => { if (n.owner === player.id) landValue += getLandValue(n); });
+        let amuletVal = 0;
+        ELEMENTS.forEach(el => amuletVal += player.amulets[el] * getAmuletValue(el));
+        return player.g + landValue + amuletVal;
+    }
+
+    function drawMap() {
+        ctx.clearRect(0, 0, 600, 600);
+        ctx.lineWidth = 4;
+        
+        ctx.strokeStyle = '#4a5568';
+        for(let u in mapEdges) {
+            let n1 = mapNodes.find(n => n.id == u);
+            mapEdges[u].forEach(v => {
+                let n2 = mapNodes.find(n => n.id == v);
+                if (u < v) {
+                    ctx.beginPath();
+                    ctx.moveTo(n1.x * TILE_SIZE + 40 + TILE_SIZE/2, n1.y * TILE_SIZE + 40 + TILE_SIZE/2);
+                    ctx.lineTo(n2.x * TILE_SIZE + 40 + TILE_SIZE/2, n2.y * TILE_SIZE + 40 + TILE_SIZE/2);
+                    ctx.stroke();
+                }
+            });
+        }
+
+        mapNodes.forEach(n => {
+            let cx = n.x * TILE_SIZE + 40;
+            let cy = n.y * TILE_SIZE + 40;
+            
+            ctx.fillStyle = COLORS[n.element] || '#ccc';
+            ctx.fillRect(cx, cy, TILE_SIZE - 4, TILE_SIZE - 4);
+            ctx.strokeStyle = '#1a202c';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(cx, cy, TILE_SIZE - 4, TILE_SIZE - 4);
+
+            if (n.owner !== undefined && n.owner !== null) {
+                ctx.strokeStyle = players[n.owner].color;
+                ctx.lineWidth = 4;
+                ctx.strokeRect(cx, cy, TILE_SIZE - 4, TILE_SIZE - 4);
+            }
+
+            ctx.fillStyle = '#000';
+            ctx.font = '12px Inter';
+            ctx.textAlign = 'center';
+            if (n.name) {
+                ctx.fillText(n.name, cx + TILE_SIZE/2 - 2, cy + TILE_SIZE/2 + 4);
+            } else if (n.level) {
+                ctx.fillText(`Lv${n.level}`, cx + TILE_SIZE/2 - 2, cy + TILE_SIZE/2 + 4);
+            }
+        });
+
+        players.forEach((p, idx) => {
+            let n = mapNodes.find(node => node.id === p.node);
+            let offsets = [[-10,-10], [10,-10], [-10,10], [10,10]];
+            let cx = n.x * TILE_SIZE + 40 + TILE_SIZE/2 + offsets[idx][0];
+            let cy = n.y * TILE_SIZE + 40 + TILE_SIZE/2 + offsets[idx][1];
+            
+            ctx.beginPath();
+            ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+        });
+    }
+
+    function updateStats() {
+        const rankings = [...players].sort((a, b) => getTotalG(b) - getTotalG(a));
+        statsContainer.innerHTML = '';
+        
+        rankings.forEach((p, rankIndex) => {
+            const isMe = p.id === currentTurn;
+            const flags = `${p.hasSun ? '🌞' : '⚫'}${p.hasMoon ? '🌙' : '⚫'}`;
+            let amulText = ELEMENTS.map(e => p.amulets[e]>0 ? `<span style="color:${COLORS[e]}">${e}${p.amulets[e]}</span>` : '').join(' ');
+            
+            statsContainer.innerHTML += `
+                <div class="flex justify-between items-center p-2 rounded ${isMe ? 'bg-gray-700 ring-1 ring-yellow-400' : 'bg-gray-800'} border-l-4" style="border-color:${p.color}">
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-bold w-4">${rankIndex+1}</span>
+                        <span class="font-bold w-12 truncate">${p.name}</span>
+                        <span class="text-xs px-1 bg-gray-900 rounded">${p.element}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="flex flex-col items-end w-20">
+                            <div class="font-mono font-bold text-yellow-300 text-right text-sm">${getTotalG(p)}G</div>
+                            <div class="font-mono text-gray-400 text-[10px] text-right">魔:${p.g} / 護:${amulText||'無'}</div>
+                        </div>
+                        <div class="w-6 text-right text-gray-400 text-xs">領${mapNodes.filter(n=>n.owner===p.id).length}</div>
+                        <div class="flex gap-1 text-xs">${flags}</div>
+                    </div>
+                </div>
+            `;
+        });
+
+        const me = players[0];
+        const handHTML = me.hand.map(c => {
+            let color = c.type === 'creature' ? 'bg-orange-600' : 
+                        c.type === 'item' ? 'bg-green-600' : 
+                        c.id === 'gift' ? 'bg-purple-600' : 
+                        c.id === 'perm' ? 'bg-indigo-600' : 
+                        c.id === 'hw8' ? 'bg-pink-600' : 'bg-blue-600';
+            return `<span class="inline-block ${color} text-white text-xs px-2 py-1 rounded border border-gray-900 shadow-sm">${c.abbr}</span>`;
+        }).join('');
+        
+        handInfo.innerHTML = `
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-gray-300">手札 (${me.hand.length}/6)</span>
+                <span class="text-gray-500 text-xs">デッキ: ${me.deck.length}枚</span>
+            </div>
+            <div class="flex flex-wrap gap-1">${handHTML}</div>
+        `;
+        
+        const canUseSpell = currentTurn === 0 && !isAutoMode && me.hand.some(c => c.type === 'spell' && c.id !== 'normal' && me.g >= c.cost) && !me.actionDone;
+        btnUseCard.disabled = !canUseSpell;
+    }
+
+    function startTurn() {
+        if (gameEnded) return;
+        const player = players[currentTurn];
+        player.actionDone = false; 
+        updateStats();
+        
+        if (player.deck.length > 0) {
+            player.hand.push(player.deck.pop());
+            log(`▶ ${player.name}のターン (ドロー)`);
+        } else {
+            log(`▶ ${player.name}のターン (山札なし)`);
+        }
+
+        updateStats();
+
+        if (player.isCPU) {
+            btnRoll.disabled = true;
+            btnUseCard.disabled = true;
+            setTimeout(() => executeCPUTurn(player), 200);
+        } else {
+            btnRoll.disabled = false;
+            btnRoll.onclick = () => rollDice(player);
+            btnUseCard.onclick = () => useSpell(player);
+        }
+    }
+
+    async function rollDice(player) {
+        btnRoll.disabled = true;
+        btnUseCard.disabled = true;
+        player.actionDone = true; 
+        
+        let roll;
+        if (player.hw) {
+            roll = player.hw;
+            player.hw = null;
+            log(`✨ ホーリーワード発動！ダイス目は${roll}`, 'text-pink-300 font-bold');
+        } else {
+            roll = Math.floor(Math.random() * 8) + 1;
+        }
+        
+        if(!player.isCPU && !isAutoMode) {
+            diceOverlay.textContent = `🎲 ${roll}`;
+            diceOverlay.style.opacity = 1;
+            await sleep(800);
+            diceOverlay.style.opacity = 0;
+        }
+
+        log(`🎲 ${player.name} は ${roll} を出した！`);
+        let stepsLeft = roll;
+        let passedOwnLands = [];
+        let passedChurch = false;
+
+        while (stepsLeft > 0) {
+            let nextNodes = mapEdges[player.node].filter(n => n !== player.lastNode);
+            if (nextNodes.length === 0) nextNodes = [player.lastNode];
+
+            let nextNode;
+            if (nextNodes.length === 1) {
+                nextNode = nextNodes[0];
+            } else {
+                if (player.isCPU) {
+                    nextNode = getCPUNextNode(player, nextNodes);
+                } else {
+                    drawMap();
+                    nextNode = await promptDirection(player.node, nextNodes);
+                }
+            }
+
+            player.lastNode = player.node;
+            player.node = nextNode;
+            stepsLeft--;
+            
+            let tile = mapNodes.find(n => n.id === player.node);
+            
+            if (stepsLeft > 0 && tile.owner === player.id) {
+                if(!passedOwnLands.includes(tile)) passedOwnLands.push(tile);
+            }
+
+            if (tile.name === '太陽' && !player.hasSun) { player.hasSun = true; player.g += 200; log(`🌞 ${player.name} が太陽を通過 (+200G)`, 'text-yellow-300'); }
+            if (tile.name === '月' && !player.hasMoon) { player.hasMoon = true; player.g += 200; log(`🌙 ${player.name} が月を通過 (+200G)`, 'text-blue-300'); }
+            if (tile.name === '聖堂') passedChurch = true;
+
+            if (tile.name === '城') {
+                if(player.hasSun && player.hasMoon) {
+                    player.laps++;
+                    let amuletVal = 0;
+                    ELEMENTS.forEach(el => amuletVal += player.amulets[el] * getAmuletValue(el));
+                    let amuletBonus = Math.floor(amuletVal * 0.1);
+                    
+                    let territories = mapNodes.filter(n => n.owner === player.id).length;
+                    let bonus = (player.laps + 1) * 200 + territories * 80 + amuletBonus;
+                    
+                    player.g += bonus;
+                    player.hasSun = false;
+                    player.hasMoon = false;
+                    player.currentTurnFlags.push('lap');
+                    log(`🏰 ${player.name} が城に帰還！周回ボーナス +${bonus}G (護符ボーナス+${amuletBonus})`, 'text-yellow-400 font-bold');
+                    
+                    if (getTotalG(player) >= TARGET_G) {
+                        showVictoryScreen(player);
+                        return;
+                    }
+                }
+            }
+
+            if (!player.isCPU && !isAutoMode) {
+                drawMap();
+                await sleep(200);
+            }
+        }
+
+        drawMap();
+        
+        if (gameEnded) return;
+
+        if (passedChurch || mapNodes.find(n=>n.id===player.node).name === '聖堂') {
+            await handleChurch(player);
+        }
+
+        await handleLandEvent(player, passedOwnLands);
+    }
+
+    function openChurchUI(player) {
+        return new Promise(resolve => {
+            churchResolve = resolve;
+            updateChurchUI(player);
+            document.getElementById('churchOverlay').classList.remove('hidden');
+        });
+    }
+
+    function closeChurch() {
+        document.getElementById('churchOverlay').classList.add('hidden');
+        if (churchResolve) {
+            churchResolve();
+            churchResolve = null;
+        }
+    }
+
+    function updateChurchUI(player) {
+        const content = document.getElementById('churchContent');
+        content.innerHTML = `<div class="font-bold text-yellow-300 mb-2 text-center text-lg">所持魔力: ${player.g}G</div>`;
+
+        ELEMENTS.forEach(el => {
+            let val = getAmuletValue(el);
+            let count = player.amulets[el];
+
+            let row = document.createElement('div');
+            row.className = 'flex justify-between items-center bg-gray-700 p-2 mb-2 rounded';
+            
+            let label = document.createElement('div');
+            label.innerHTML = `<span style="color:${COLORS[el]}" class="font-bold">${el}</span> (価値:${val}G) <br>所持: ${count}枚`;
+            label.className = 'w-1/2 text-white';
+            
+            let btns = document.createElement('div');
+            btns.className = 'flex gap-1';
+            
+            const createBtn = (text, delta) => {
+                let b = document.createElement('button');
+                b.textContent = text;
+                b.className = 'px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-xs text-white font-bold transition';
+                b.onclick = () => buySellAmulet(player, el, delta);
+                
+                if (delta > 0 && player.g < val * delta) b.disabled = true;
+                if (delta < 0 && count < Math.abs(delta)) b.disabled = true;
+                
+                if (b.disabled) b.className = 'px-2 py-1 bg-gray-800 text-gray-500 rounded text-xs cursor-not-allowed';
+                return b;
+            };
+
+            btns.appendChild(createBtn('-10', -10));
+            btns.appendChild(createBtn('-1', -1));
+            btns.appendChild(createBtn('+1', 1));
+            btns.appendChild(createBtn('+10', 10));
+
+            row.appendChild(label);
+            row.appendChild(btns);
+            content.appendChild(row);
+        });
+    }
+
+    function buySellAmulet(player, element, delta) {
+        let val = getAmuletValue(element);
+        let cost = val * delta; 
+        if (delta > 0 && player.g >= cost) {
+            player.g -= cost;
+            player.amulets[element] += delta;
+            if(!player.currentTurnFlags.includes('amulet')) player.currentTurnFlags.push('amulet');
+            log(`　 ${element}護符を ${delta}枚購入 (-${cost}G)`, 'text-purple-300');
+        } else if (delta < 0 && player.amulets[element] >= Math.abs(delta)) {
+            player.g -= cost; // 負の値なので減算すると実質プラス
+            player.amulets[element] += delta; // 負の値なので減算
+            if(!player.currentTurnFlags.includes('amulet')) player.currentTurnFlags.push('amulet');
+            log(`　 ${element}護符を ${Math.abs(delta)}枚売却 (+${Math.abs(cost)}G)`, 'text-purple-300');
+        }
+        updateChurchUI(player);
+        updateStats(); 
+    }
+
+    async function handleChurch(player) {
+        log(`⛪ ${player.name} が聖堂を利用`);
+        if (player.isCPU) {
+            let targetEl = player.element;
+            let val = getAmuletValue(targetEl);
+            if(player.g >= val * 10) {
+                let qty = Math.min(50, Math.floor(player.g / val));
+                if(qty > 0) {
+                    player.amulets[targetEl] += qty;
+                    player.g -= qty * val;
+                    if(!player.currentTurnFlags.includes('amulet')) player.currentTurnFlags.push('amulet');
+                    log(`　 ${player.name} が ${targetEl}護符を ${qty}枚購入 (-${qty*val}G)`, 'text-purple-300');
+                }
+            }
+        } else {
+            await openChurchUI(player);
+        }
+        updateStats();
+    }
+
+    async function handleLandEvent(player, passedOwnLands) {
+        let tile = mapNodes.find(n => n.id === player.node);
+        log(`📍 ${player.name} は ${tile.name || tile.element + '土地'} に止まった。`);
+
+        let creatureIdx = player.hand.findIndex(c => c.type === 'creature');
+        
+        if (tile.type === 'land' && tile.owner === undefined) {
+            if (player.g >= LAND_COST && creatureIdx > -1) {
+                let willBuy = false;
+                if (player.isCPU) {
+                    let match = (tile.element === player.element || tile.element === '複');
+                    let multipleCr = player.hand.filter(c => c.type === 'creature').length >= 2;
+                    if (match || multipleCr) willBuy = true;
+                } else {
+                    const ans = await showDialog(`${LAND_COST}Gとクリーチャーを消費して領地を獲得しますか？`, [
+                        { text: '獲得する', value: 'yes', colorClass: 'bg-green-600 hover:bg-green-500' },
+                        { text: 'キャンセル', value: 'no', colorClass: 'bg-gray-600 hover:bg-gray-500' }
+                    ]);
+                    willBuy = (ans === 'yes');
+                }
+
+                if (willBuy) {
+                    player.g -= LAND_COST;
+                    player.hand.splice(creatureIdx, 1);
+                    tile.owner = player.id;
+                    tile.level = 1;
+                    player.actionDone = true;
+                    log(`🚩 ${player.name} が領地を獲得しました！(-${LAND_COST}G)`, 'text-green-300');
+                }
+            }
+        }
+        else if (tile.type === 'land' && tile.owner !== player.id && tile.owner !== undefined) {
+            let defender = players.find(p => p.id === tile.owner);
+            let landVal = getLandValue(tile);
+            let toll = Math.floor(landVal * TOLL_RATES[tile.level]);
+            
+            log(`⚔️ ${player.name} は ${defender.name} の領地に侵入！ (通行料: ${toll}G)`, 'text-red-400 font-bold');
+            
+            let invade = false;
+            if(creatureIdx > -1) {
+                if(player.isCPU) {
+                    invade = true;
+                } else {
+                    const ans = await showDialog(`通行料 ${toll}G。<br>クリーチャーを消費して侵略しますか？`, [
+                        { text: '侵略する', value: 'yes', colorClass: 'bg-red-600 hover:bg-red-500' },
+                        { text: '通行料を払う', value: 'no' }
+                    ]);
+                    invade = (ans === 'yes');
+                }
+            }
+            
+            if(invade) {
+                player.hand.splice(creatureIdx, 1);
+                let invHasItem = player.hand.findIndex(c => c.type === 'item');
+                let defHasItem = defender.hand.findIndex(c => c.type === 'item');
+                
+                let defMatch = (defender.element === tile.element);
+                let invaderWins = false;
+
+                if (defHasItem > -1) {
+                    defender.hand.splice(defHasItem, 1);
+                    if(invHasItem > -1) player.hand.splice(invHasItem, 1);
+                    invaderWins = false;
+                    log(`🛡️ 防衛側がアイテムを使用！`, 'text-blue-300');
+                } else {
+                    if (defMatch) {
+                        if (invHasItem > -1) {
+                            player.hand.splice(invHasItem, 1);
+                            invaderWins = true;
+                            log(`🗡️ 侵略側がアイテムを使用！`, 'text-red-300');
+                        } else {
+                            invaderWins = false;
+                        }
+                    } else {
+                        invaderWins = true;
+                    }
+                }
+
+                if (invaderWins) {
+                    log(`💥 侵略成功！ ${player.name} が土地を奪った！`, 'text-yellow-400 font-bold');
+                    tile.owner = player.id;
+                    player.actionDone = true;
+                } else {
+                    log(`🛡️ 侵略失敗... ${player.name} は通行料 ${toll}G を支払った。`, 'text-red-400');
+                    player.g -= toll;
+                    defender.g += toll;
+                    player.actionDone = true;
+                }
+            } else {
+                player.g -= toll;
+                defender.g += toll;
+                log(`💸 ${player.name} は ${toll}G 支払った。`);
+            }
+        }
+        
+        let commandLands = [];
+        if (!player.actionDone) {
+            if (tile.type === 'fort' || tile.type === 'castle') {
+                commandLands = mapNodes.filter(n => n.owner === player.id);
+            } else {
+                commandLands = [...passedOwnLands];
+                if (tile.owner === player.id && !commandLands.find(n => n.id === tile.id)) {
+                    commandLands.push(tile);
+                }
+            }
+        }
+
+        if (commandLands.length > 0) {
+            await executeTerritoryCommand(player, commandLands);
+        }
+
+        drawMap();
+        await endTurn(player);
+    }
+
+    async function executeTerritoryCommand(player, availableLands) {
+        if (availableLands.length === 0) return;
+
+        if (player.isCPU) {
+            let landToChange = availableLands.find(l => l.element !== player.element && l.element !== '複');
+            if (landToChange) {
+                let cost = landToChange.element === '複' ? 100 : 300;
+                if (player.g >= cost) {
+                    player.g -= cost;
+                    landToChange.element = player.element;
+                    log(`✨ ${player.name} が領地を${player.element}に変化させた！(-${cost}G)`, 'text-purple-300');
+                    return;
+                }
+            }
+            
+            let bestLand = [...availableLands].sort((a,b)=>b.level - a.level)[0];
+            if (bestLand && bestLand.level < 5) {
+                let currentLv = bestLand.level;
+                let targetLv = currentLv;
+                let cost = 0;
+                let totalCost = 0;
+                for(let l = currentLv + 1; l <= 5; l++) {
+                    if (player.g >= totalCost + UPGRADE_COSTS[l-1]) {
+                        totalCost += UPGRADE_COSTS[l-1];
+                        targetLv = l;
+                    } else break;
+                }
+                if (targetLv > currentLv) {
+                    player.g -= totalCost;
+                    bestLand.level = targetLv;
+                    log(`⬆️ ${player.name} が領地を一気にLv${targetLv}にアップグレード！(-${totalCost}G)`, 'text-green-300');
+                }
+            }
+        } else {
+            let targetLand = availableLands[0];
+            
+            if (availableLands.length > 1) {
+                const landButtons = availableLands.map(l => ({
+                    text: `${l.name || '土地'} (Lv${l.level} ${l.element})`,
+                    value: l.id,
+                    colorClass: 'bg-indigo-600 hover:bg-indigo-500'
+                }));
+                landButtons.push({ text: 'キャンセル', value: 'cancel', colorClass: 'bg-gray-600 hover:bg-gray-500' });
+                
+                const landAns = await showDialog('コマンドを実行する領地を選択してください', landButtons);
+                if (landAns === 'cancel') return;
+                targetLand = availableLands.find(l => l.id === parseInt(landAns));
+            }
+            
+            if (!targetLand) return;
+
+            const ans = await showDialog(`領地コマンド（対象：Lv${targetLand.level} ${targetLand.element}）`, [
+                { text: 'レベルアップ', value: 'up' },
+                { text: '属性変化', value: 'change' },
+                { text: '何もしない', value: 'skip', colorClass: 'bg-gray-600' }
+            ]);
+            
+            if(ans === 'skip') return;
+            
+            if (ans === 'up') {
+                let options = [];
+                let totalCost = 0;
+                for(let l = targetLand.level + 1; l <= 5; l++) {
+                    totalCost += UPGRADE_COSTS[l-1];
+                    if(player.g >= totalCost) {
+                        options.push({text: `Lv${l}へ (-${totalCost}G)`, value: l});
+                    }
+                }
+                if (options.length === 0) {
+                    log('魔力不足でレベルアップできません', 'text-red-400');
+                    return;
+                }
+                options.push({ text: 'キャンセル', value: 'cancel', colorClass: 'bg-gray-600' });
+                
+                const targetLvAns = await showDialog('どのレベルまで上げますか？', options);
+                if(targetLvAns !== 'cancel') {
+                    let targetLv = parseInt(targetLvAns);
+                    let cost = 0;
+                    for(let i = targetLand.level; i < targetLv; i++) {
+                        cost += UPGRADE_COSTS[i];
+                    }
+                    player.g -= cost;
+                    targetLand.level = targetLv;
+                    log(`⬆️ 領地が一気にLv${targetLv}にアップグレード！(-${cost}G)`, 'text-green-300');
+                }
+            } else if (ans === 'change') {
+                let cost = targetLand.element === '複' ? 100 : 300;
+                if(player.g >= cost) {
+                    player.g -= cost;
+                    targetLand.element = player.element;
+                    log(`✨ 領地が${player.element}属性に変化した！(-${cost}G)`, 'text-purple-300');
+                } else log('魔力不足', 'text-red-400');
+            }
+        }
+    }
+
+    async function executeCPUTurn(player) {
+        let spells = player.hand.filter(c => c.type === 'spell' && c.id !== 'normal' && player.g >= c.cost);
+        if (spells.length > 0 && Math.random() > 0.5) {
+            await useSpell(player);
+            await sleep(500);
+        }
+        await rollDice(player);
+    }
+
+    function showDialog(message, buttons) {
+        return new Promise(resolve => {
+            const overlay = document.getElementById('dialogOverlay');
+            const msgEl = document.getElementById('dialogMessage');
+            const btnsEl = document.getElementById('dialogButtons');
+            
+            msgEl.innerHTML = message;
+            btnsEl.innerHTML = '';
+            
+            buttons.forEach(btn => {
+                const b = document.createElement('button');
+                b.className = `px-4 py-2 rounded text-white font-bold transition ${btn.colorClass || 'bg-blue-600 hover:bg-blue-500'}`;
+                b.textContent = btn.text;
+                b.onclick = () => { overlay.classList.add('hidden'); resolve(btn.value); };
+                btnsEl.appendChild(b);
+            });
+            overlay.classList.remove('hidden');
+        });
+    }
+
+    function promptDirection(currentNodeId, options) {
+        return new Promise(resolve => {
+            const overlay = document.getElementById('directionOverlay');
+            const btns = document.getElementById('directionButtons');
+            btns.innerHTML = '';
+            const currNode = mapNodes.find(n => n.id === currentNodeId);
+            
+            options.forEach(optId => {
+                const optNode = mapNodes.find(n => n.id === optId);
+                const btn = document.createElement('button');
+                btn.className = 'bg-gray-800 border-2 border-yellow-400 text-white font-bold p-4 rounded-full shadow-lg hover:bg-gray-700 transition w-16 h-16 flex items-center justify-center';
+                let dir = '・';
+                if (optNode.x > currNode.x) dir = '➡';
+                else if (optNode.x < currNode.x) dir = '⬅';
+                else if (optNode.y > currNode.y) dir = '⬇';
+                else if (optNode.y < currNode.y) dir = '⬆';
+                
+                btn.textContent = dir;
+                btn.onclick = () => { overlay.classList.add('hidden'); resolve(optId); };
+                btns.appendChild(btn);
+            });
+            overlay.classList.remove('hidden');
+        });
+    }
+
+    function getCPUNextNode(player, nextNodes) {
+        let targets = [];
+        if (!player.hasSun) targets.push(0, 18);
+        if (!player.hasMoon) targets.push(23, 34);
+        if (targets.length === 0) targets.push(29); 
+        
+        let bestNext = nextNodes[0];
+        let bestScore = -999999; 
+
+        for (let n of nextNodes) {
+            let minDist = 999;
+            for (let t of targets) {
+                let d = bfsDist(n, t, player.node);
+                if (d < minDist) { minDist = d; }
+            }
+            
+            let score = -minDist * 100;
+            
+            let nextTile = mapNodes.find(node => node.id === n);
+            if (nextTile && nextTile.type === 'land') {
+                if (nextTile.owner === undefined) {
+                    score += 50; 
+                } else if (nextTile.owner !== player.id) {
+                    let landVal = getLandValue(nextTile);
+                    let toll = Math.floor(landVal * TOLL_RATES[nextTile.level]);
+                    score -= toll;
+                }
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestNext = n;
+            }
+        }
+        return bestNext;
+    }
+
+    function bfsDist(start, target, ignoreNode) {
+        let q = [{ node: start, dist: 0 }];
+        let visited = new Set([start, ignoreNode]);
+        while(q.length > 0) {
+            let curr = q.shift();
+            if (curr.node === target) return curr.dist;
+            for (let n of mapEdges[curr.node]) {
+                if (!visited.has(n)) { visited.add(n); q.push({ node: n, dist: curr.dist + 1 }); }
+            }
+        }
+        return 999;
+    }
+
+    function showVictoryScreen(winner, isTimeUp = false) {
+        gameEnded = true;
+        document.getElementById('victoryMessage').textContent = `${winner.name} が勝利！`;
+        
+        if (isTimeUp) {
+            document.getElementById('victorySubMessage').textContent = `25ラウンド終了により、総魔力トップで勝利しました。（終了ラウンド: ${globalRound}R）`;
+        } else {
+            document.getElementById('victorySubMessage').textContent = `目標の ${TARGET_G}G を達成し、城に帰還しました。（終了ラウンド: ${globalRound}R）`;
+        }
+        
+        document.getElementById('victoryOverlay').classList.remove('hidden');
+        
+        drawTransitionGraph();
+    }
+
+    function drawTransitionGraph() {
+        const container = document.getElementById('graphContainer');
+        container.innerHTML = '';
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        const margin = { top: 30, right: 40, bottom: 40, left: 60 };
+
+        const svg = d3.select("#graphContainer")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+
+        const allHistory = players.flatMap(p => p.history);
+        const maxTurn = d3.max(allHistory, d => d.turn) || 1;
+        const maxG = Math.max(d3.max(allHistory, d => d.g), TARGET_G);
+
+        const xScale = d3.scaleLinear()
+            .domain([0, maxTurn])
+            .range([margin.left, width - margin.right]);
+
+        const yScale = d3.scaleLinear()
+            .domain([0, maxG])
+            .range([height - margin.bottom, margin.top]);
+
+        const xAxis = d3.axisBottom(xScale).ticks(Math.min(maxTurn, 10)).tickFormat(d => d + 'R');
+        const yAxis = d3.axisLeft(yScale).ticks(8);
+
+        svg.append("g")
+            .attr("transform", `translate(0,${height - margin.bottom})`)
+            .call(xAxis)
+            .attr("color", "#9ca3af")
+            .selectAll("text").attr("font-size", "12px");
+
+        svg.append("g")
+            .attr("transform", `translate(${margin.left},0)`)
+            .call(yAxis)
+            .attr("color", "#9ca3af")
+            .selectAll("text").attr("font-size", "12px");
+
+        svg.append("line")
+            .attr("x1", margin.left)
+            .attr("y1", yScale(TARGET_G))
+            .attr("x2", width - margin.right)
+            .attr("y2", yScale(TARGET_G))
+            .attr("stroke", "#ef4444")
+            .attr("stroke-width", 2)
+            .attr("stroke-dasharray", "5,5");
+
+        svg.append("text")
+            .attr("x", width - margin.right)
+            .attr("y", yScale(TARGET_G) - 10)
+            .attr("fill", "#ef4444")
+            .attr("text-anchor", "end")
+            .attr("font-weight", "bold")
+            .text(`目標: ${TARGET_G}G`);
+
+        const line = d3.line()
+            .x(d => xScale(d.turn))
+            .y(d => yScale(d.g))
+            .curve(d3.curveMonotoneX);
+
+        players.forEach(p => {
+            svg.append("path")
+                .datum(p.history)
+                .attr("fill", "none")
+                .attr("stroke", p.color)
+                .attr("stroke-width", 3)
+                .attr("d", line);
+
+            const events = p.history.filter(d => d.flags.length > 0);
+            events.forEach(ev => {
+                if (ev.flags.includes('lap')) {
+                    svg.append("circle")
+                        .attr("cx", xScale(ev.turn))
+                        .attr("cy", yScale(ev.g))
+                        .attr("r", 6)
+                        .attr("fill", p.color)
+                        .attr("stroke", "#fff")
+                        .attr("stroke-width", 2)
+                        .append("title").text(`${p.name} - 周回 (${ev.g}G)`);
+                }
+                if (ev.flags.includes('amulet')) {
+                    svg.append("polygon")
+                        .attr("points", "0,-8 7,4 -7,4")
+                        .attr("transform", `translate(${xScale(ev.turn)},${yScale(ev.g)})`)
+                        .attr("fill", "#fde047") 
+                        .attr("stroke", "#000")
+                        .attr("stroke-width", 1)
+                        .append("title").text(`${p.name} - 護符売買 (${ev.g}G)`);
+                }
+                if (ev.flags.includes('chain4')) {
+                    svg.append("rect")
+                        .attr("x", xScale(ev.turn) - 5)
+                        .attr("y", yScale(ev.g) - 5)
+                        .attr("width", 10)
+                        .attr("height", 10)
+                        .attr("fill", p.color)
+                        .attr("stroke", "#fff")
+                        .attr("stroke-width", 1)
+                        .append("title").text(`${p.name} - 4連鎖達成`);
+                }
+                if (ev.flags.includes('chain5')) {
+                    svg.append("polygon")
+                        .attr("points", "0,-9 9,0 0,9 -9,0") 
+                        .attr("transform", `translate(${xScale(ev.turn)},${yScale(ev.g)})`)
+                        .attr("fill", p.color)
+                        .attr("stroke", "#fff")
+                        .attr("stroke-width", 2)
+                        .append("title").text(`${p.name} - 5連鎖達成`);
+                }
+            });
+        });
+    }
+
+    async function useSpell(player) {
+        let spells = player.hand.map((c, i) => ({ card: c, index: i })).filter(x => x.type === 'spell' && x.id !== 'normal' && player.g >= x.card.cost);
+        let targetIdx = -1;
+
+        if (player.isCPU) {
+            let usable = player.hand.map((c, i) => ({ card: c, index: i })).filter(x => x.card.type === 'spell' && x.card.id !== 'normal' && player.g >= x.card.cost);
+            if(usable.length > 0) targetIdx = usable[Math.floor(Math.random() * usable.length)].index;
+        } else {
+            let usable = player.hand.map((c, i) => ({ card: c, index: i })).filter(x => x.card.type === 'spell' && x.card.id !== 'normal' && player.g >= x.card.cost);
+            if(usable.length === 0) return;
+            const buttons = usable.map(x => ({ text: `${x.card.name}(${x.card.cost}G)`, value: x.index, colorClass: 'bg-purple-600 hover:bg-purple-500' }));
+            buttons.push({ text: 'キャンセル', value: -1, colorClass: 'bg-gray-600' });
+            targetIdx = await showDialog('使用するスペルを選択', buttons);
+        }
+
+        if (targetIdx !== -1 && targetIdx !== '-1') {
+            let card = player.hand[targetIdx];
+            player.hand.splice(targetIdx, 1);
+            player.g -= card.cost;
+            
+            if (card.id === 'gift') {
+                const rank = [...players].sort((a,b)=>getTotalG(b)-getTotalG(a)).findIndex(p=>p.id===player.id) + 1;
+                const gainG = rank * 50;
+                player.g += gainG;
+                for(let i=0; i<rank; i++) if(player.deck.length) player.hand.push(player.deck.pop());
+                log(`🃏 ${player.name} がギフトを使用 (-80G, +${gainG}G, ${rank}ドロー)`, 'text-purple-300');
+            } else if (card.id === 'perm') {
+                player.hasSun = true;
+                player.hasMoon = true;
+                log(`📜 ${player.name} がパーミッションを使用！全ての砦を通過した状態になる (-100G)`, 'text-indigo-300 font-bold');
+            } else if (card.id === 'hw8') {
+                player.hw = 8;
+                log(`✨ ${player.name} がホーリーワード8を使用！次のダイスが8になる (-80G)`, 'text-pink-300 font-bold');
+            }
+            updateStats();
+        }
+    }
+
+    function getMaxChain(player) {
+        let maxC = 0;
+        ELEMENTS.forEach(e => {
+            let c = mapNodes.filter(n => n.owner === player.id && n.element === e).length;
+            if(c > maxC) maxC = c;
+        });
+        return maxC;
+    }
+
+    async function endTurn(player) {
+        if (gameEnded) return;
+        
+        while (player.hand.length > 6) {
+            if (player.isCPU || isAutoMode) {
+                player.hand.splice(Math.floor(Math.random() * player.hand.length), 1);
+            } else {
+                const buttons = player.hand.map((c, i) => ({ text: `${c.name}(${c.abbr})`, value: i, colorClass: 'bg-red-600 hover:bg-red-500' }));
+                const discardIdx = await showDialog('手札が超過しています。捨てるカードを選択。', buttons);
+                player.hand.splice(discardIdx, 1);
+            }
+        }
+
+        let currentMax = getMaxChain(player);
+        if (currentMax >= 4 && player.maxChain < 4) {
+            player.currentTurnFlags.push('chain4');
+            player.maxChain = currentMax;
+            log(`🌟 ${player.name} が4連鎖を達成！`, 'text-yellow-300 font-bold');
+        }
+        if (currentMax >= 5 && player.maxChain < 5) {
+            player.currentTurnFlags.push('chain5');
+            player.maxChain = currentMax;
+            log(`🌠 ${player.name} が5連鎖を達成！！`, 'text-yellow-400 font-bold text-lg');
+        }
+
+        player.history.push({
+            turn: globalRound,
+            g: getTotalG(player),
+            flags: [...player.currentTurnFlags]
+        });
+        player.currentTurnFlags = [];
+
+        updateStats();
+        if (currentTurn === players.length - 1) {
+            if (globalRound >= 25) {
+                gameEnded = true;
+                const winner = [...players].sort((a,b) => getTotalG(b) - getTotalG(a))[0];
+                showVictoryScreen(winner, true);
+                return;
+            }
+            globalRound++;
+        }
+        currentTurn = (currentTurn + 1) % players.length;
+        startTurn();
+    }
+</script>
+</body>
+</html>
